@@ -7,7 +7,7 @@ Estructura los datos en tres niveles:
 """
 
 import logging
-from utils import limpiar_moneda
+from .utils import limpiar_moneda
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,6 @@ class FacturaProcessor:
         }
 
         # --- 3. DATASET COMPARACIÓN (LISTA MAESTRA VERTICAL) ---
-        # Ahora incluye No. Factura y No. Contrato en cada fila para poder consolidar múltiples PDFs
         filas_comparacion = []
         
         # A. Agregar Variables Generales
@@ -120,8 +119,8 @@ class FacturaProcessor:
         
         for key in campos_a_comparar:
             filas_comparacion.append({
-                'No. Factura': num_factura, # <--- LLAVE AGREGADA
-                'No. Contrato': contrato,   # <--- LLAVE AGREGADA
+                'No. Factura': num_factura, 
+                'No. Contrato': contrato,  
                 'Tipo': 'General',
                 'Variable': key,
                 'Valor PDF': fila_general.get(key, ''),
@@ -135,8 +134,8 @@ class FacturaProcessor:
                 
                 # Concepto
                 filas_comparacion.append({
-                    'No. Factura': num_factura, # <--- LLAVE AGREGADA
-                    'No. Contrato': contrato,   # <--- LLAVE AGREGADA
+                    'No. Factura': num_factura, 
+                    'No. Contrato': contrato, 
                     'Tipo': 'Detalle',
                     'Variable': f"{prefijo} - Concepto",
                     'Valor PDF': item.get('concepto', ''),
@@ -177,6 +176,6 @@ class FacturaProcessor:
             'validacion': {
                 'es_valida': len(self.errores) == 0,
                 'errores': self.errores,
-                'factura': num_factura # Para el log
+                'factura': num_factura
             }
         }

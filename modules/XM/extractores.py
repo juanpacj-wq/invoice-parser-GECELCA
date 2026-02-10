@@ -5,9 +5,9 @@ Analiza las líneas de texto reconstruidas visualmente para extraer datos y tabl
 
 import re
 import logging
-from extractores_pdf import extraer_datos_estructurados
-from extractores_patrones import PATRONES_ENCABEZADO, PATRONES_MONTO, PATRONES_INFO_PIE, ENCABEZADOS_TABLA_ITEMS
-from utils import limpiar_moneda, limpiar_cantidad
+from .extractores_pdf import extraer_datos_estructurados
+from .extractores_patrones import PATRONES_ENCABEZADO, PATRONES_MONTO, PATRONES_INFO_PIE, ENCABEZADOS_TABLA_ITEMS
+from .utils import limpiar_moneda, limpiar_cantidad
 
 logger = logging.getLogger(__name__)
 

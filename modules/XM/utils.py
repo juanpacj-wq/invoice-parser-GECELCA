@@ -72,9 +72,7 @@ def parsear_fecha(fecha_str):
         return None
         
     fecha_limpia = fecha_str.split()[0].strip()
-    # Eliminar espacios internos en la fecha (2026 - 01 - 11 -> 2026-01-11)
     fecha_limpia = re.sub(r'\s+', '', fecha_limpia)
-    # Corregir separadores si vienen con espacios alrededor
     fecha_limpia = fecha_limpia.replace('–', '-').replace('/', '-')
     
     formatos = ['%Y-%m-%d', '%Y/%m/%d', '%d/%m/%Y']
