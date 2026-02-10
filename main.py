@@ -1,55 +1,187 @@
-import os
-import logging
-import importlib
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+Script principal para el procesamiento masivo de facturas de Gecelca/Air-e.
+Genera un archivo consolidado (Append) con la información de todos los PDFs procesados.
+"""
 
-# Configuración básica de logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+import os
+import argparse
+import logging
+import time
+
+# Importar módulos del proyecto
+import extractores_pdf
+import extractores
+import procesamiento
+import exportacion
+import utils
+
+# Configuración de logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("procesador_consolidado.log"),
+        logging.StreamHandler()
+    ]
+)
+
 logger = logging.getLogger(__name__)
 
-def obtener_modulo(project_type):
-    """Carga dinámicamente el módulo main del proyecto seleccionado"""
-    if project_type == "Ecopetrol":
-        return importlib.import_module("modules.ecopetrol.main")
-    elif project_type == "Gecelca/XM":
-        return importlib.import_module("modules.XM.main")
+def procesar_pdf_a_datos(ruta_pdf):
+    """
+    Ejecuta el pipeline de extracción para un solo PDF y retorna los datos estructurados
+    (sin exportar a Excel todavía).
+    """
+    try:
+        nombre_base = utils.obtener_nombre_archivo_sin_extension(ruta_pdf)
+        logger.info(f"--- Leyendo: {nombre_base} ---")
+
+        # 1. Reconstrucción Visual (PDF -> CSV interno)
+        # extractores_pdf.convertir_pdf_a_csv(ruta_pdf) # Descomentar si se quiere depurar el CSV
+        
+        # 2. Extracción de Datos Crudos
+        datos_crudos = extractores.extraer_datos_factura(ruta_pdf)
+        
+        # Inyectar nombre de archivo
+        if 'datos_generales' not in datos_crudos:
+            datos_crudos['datos_generales'] = {}
+        datos_crudos['datos_generales']['nombre_archivo'] = f"{nombre_base}.pdf"
+        
+        # 3. Procesamiento y Estructuración
+        processor = procesamiento.FacturaProcessor(datos_crudos)
+        datos_finales = processor.obtener_datos_procesados()
+        
+        return datos_finales
+
+    except Exception as e:
+        logger.error(f"Error crítico en {ruta_pdf}: {e}", exc_info=True)
+        return None
+
+def procesar_directorio_consolidado(directorio_entrada, directorio_salida=None):
+    """
+    Procesa todos los PDFs y genera UN SOLO Excel consolidado.
+    """
+    if not os.path.exists(directorio_entrada):
+        logger.error(f"El directorio no existe: {directorio_entrada}")
+        return
+
+    if not directorio_salida:
+        directorio_salida = os.path.join(directorio_entrada, "Resultados_Consolidados")
+    
+    utils.crear_directorio_si_no_existe(directorio_salida)
+
+    archivos = [f for f in os.listdir(directorio_entrada) if f.lower().endswith('.pdf')]
+    total = len(archivos)
+    
+    if total == 0:
+        logger.warning("No se encontraron archivos PDF.")
+        return
+
+    logger.info(f"Iniciando consolidación de {total} archivos...")
+    start_time = time.time()
+    
+    # --- ACUMULADORES (Listas Maestras) ---
+    acumulado_conceptos = []
+    acumulado_generales = []
+    acumulado_comparacion = []
+    acumulado_validacion = []
+    
+    exitosos = 0
+    fallidos = 0
+    
+    for i, archivo in enumerate(archivos, 1):
+        ruta_completa = os.path.join(directorio_entrada, archivo)
+        print(f"Procesando [{i}/{total}]: {archivo}")
+        
+        datos = procesar_pdf_a_datos(ruta_completa)
+        
+        if datos:
+            # Append a las listas maestras
+            acumulado_conceptos.extend(datos['conceptos'])
+            acumulado_generales.extend(datos['generales'])
+            acumulado_comparacion.extend(datos['comparacion'])
+            
+            # Log de validación
+            val = datos['validacion']
+            log_entry = {
+                'Fecha Proceso': time.strftime("%Y-%m-%d %H:%M:%S"),
+                'Archivo': archivo,
+                'No. Factura': val.get('factura', 'N/A'),
+                'Es Válida': "SÍ" if val.get('es_valida') else "NO",
+                'Errores': "; ".join(val.get('errores', [])) if val.get('errores') else "Ninguno"
+            }
+            acumulado_validacion.append(log_entry)
+            
+            exitosos += 1
+        else:
+            fallidos += 1
+            acumulado_validacion.append({
+                'Fecha Proceso': time.strftime("%Y-%m-%d %H:%M:%S"),
+                'Archivo': archivo,
+                'Es Válida': "ERROR CRÍTICO",
+                'Errores': "Fallo en lectura del archivo"
+            })
+
+    # --- EXPORTACIÓN FINAL ---
+    if exitosos > 0:
+        logger.info("Generando Excel Consolidado...")
+        
+        datos_consolidados = {
+            'conceptos': acumulado_conceptos,
+            'generales': acumulado_generales,
+            'comparacion': acumulado_comparacion,
+            'validacion': acumulado_validacion # Pasamos la lista acumulada
+        }
+        
+        nombre_consolidado = f"Consolidado_Gecelca_{time.strftime('%Y%m%d_%H%M%S')}.xlsx"
+        ruta_excel = os.path.join(directorio_salida, nombre_consolidado)
+        
+        exportador = exportacion.ExportadorExcel(datos_consolidados, ruta_excel)
+        exportador.exportar()
+        
+        logger.info(f"¡Éxito! Archivo maestro guardado en: {ruta_excel}")
     else:
-        raise ValueError(f"Proyecto desconocido: {project_type}")
+        logger.error("No se pudo procesar ningún archivo correctamente.")
 
-def procesar_factura(ruta_pdf, directorio_salida=None, project_type="Ecopetrol"):
-    try:
-        modulo = obtener_modulo(project_type)
-        logger.info(f"--- Iniciando proceso individual para {project_type} ---")
-        
-        if project_type == "Ecopetrol":
-            # Ecopetrol usa procesar_factura(ruta, salida, exportar_excel)
-            return modulo.procesar_factura(ruta_pdf, directorio_salida, True)
-        elif project_type == "Gecelca/XM":
-            # Gecelca usa procesar_individual(ruta, salida)
-            if hasattr(modulo, 'procesar_individual'):
-                return modulo.procesar_individual(ruta_pdf, directorio_salida)
-            else:
-                return modulo.procesar_factura(ruta_pdf, directorio_salida)
-                
-    except Exception as e:
-        logger.error(f"Error crítico en {project_type}: {e}", exc_info=True)
-        return False
+    elapsed_time = time.time() - start_time
+    logger.info(f"Resumen: {exitosos} procesados, {fallidos} fallidos. Tiempo: {elapsed_time:.2f}s")
 
-def procesar_directorio(directorio_entrada, directorio_salida=None, project_type="Ecopetrol"):
-    try:
-        modulo = obtener_modulo(project_type)
-        logger.info(f"--- Iniciando proceso masivo para {project_type} ---")
-        
-        if project_type == "Ecopetrol":
-            # Ecopetrol usa procesar_directorio(entrada, salida)
-            return modulo.procesar_directorio(directorio_entrada, directorio_salida)
-        elif project_type == "Gecelca/XM":
-            # Gecelca usa procesar_directorio_consolidado(entrada, salida)
-            if hasattr(modulo, 'procesar_directorio_consolidado'):
-                return modulo.procesar_directorio_consolidado(directorio_entrada, directorio_salida)
-            else:
-                # Fallback por si el nombre es diferente
-                return modulo.procesar_directorio(directorio_entrada, directorio_salida)
+def procesar_individual(ruta_pdf, directorio_salida=None):
+    """
+    Procesa un solo archivo (wrapper para mantener compatibilidad con -a).
+    """
+    if not directorio_salida:
+        directorio_salida = os.path.dirname(os.path.abspath(ruta_pdf))
+    
+    nombre_base = utils.obtener_nombre_archivo_sin_extension(ruta_pdf)
+    ruta_excel = os.path.join(directorio_salida, f"{nombre_base}_procesado.xlsx")
+    
+    datos = procesar_pdf_a_datos(ruta_pdf)
+    
+    if datos:
+        exportador = exportacion.ExportadorExcel(datos, ruta_excel)
+        exportador.exportar()
+        logger.info(f"Archivo individual generado: {ruta_excel}")
+    else:
+        logger.error("Fallo al procesar el archivo individual.")
 
-    except Exception as e:
-        logger.error(f"Error crítico en directorio {project_type}: {e}", exc_info=True)
-        return False
+def main():
+    parser = argparse.ArgumentParser(description='Procesador Consolidado de Facturas')
+    
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('-a', '--archivo', help='Procesar un solo archivo')
+    group.add_argument('-d', '--directorio', help='Procesar directorio completo y consolidar')
+    
+    parser.add_argument('-o', '--output', help='Directorio de salida (opcional)')
+    
+    args = parser.parse_args()
+    
+    if args.archivo:
+        procesar_individual(args.archivo, args.output)
+    elif args.directorio:
+        procesar_directorio_consolidado(args.directorio, args.output)
+
+if __name__ == "__main__":
+    main()
