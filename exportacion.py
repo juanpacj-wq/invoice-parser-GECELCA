@@ -55,7 +55,7 @@ class ExportadorExcel:
             # Validación puede ser una lista (si es consolidado) o dict (si es individual)
             validacion_data = self.datos.get('validacion', [])
             if isinstance(validacion_data, dict):
-                # Caso individual (legacy)
+                # Caso individual 
                 errores = validacion_data.get('errores', [])
                 df_validacion = pd.DataFrame({
                     'Fecha Proceso': [pd.Timestamp.now()],
@@ -94,10 +94,10 @@ class ExportadorExcel:
                 otras = [c for c in df_generales.columns if c not in cols_existentes]
                 df_generales = df_generales[cols_existentes + otras]
 
-            # 4. Orden Columnas - HOJA COMPARACIÓN (Con Llaves Nuevas)
+            # 4. Orden Columnas - HOJA COMPARACIÓN
             cols_comparacion_orden = [
-                'No. Factura',      # <--- Llave Primaria
-                'No. Contrato',     # <--- Llave Secundaria
+                'No. Factura',     
+                'No. Contrato',   
                 'Tipo', 
                 'Variable', 
                 'Valor PDF', 
