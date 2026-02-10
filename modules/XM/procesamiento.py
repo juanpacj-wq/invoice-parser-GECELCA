@@ -7,7 +7,7 @@ Estructura los datos en tres niveles:
 """
 
 import logging
-from utils import limpiar_moneda
+from .utils import limpiar_moneda
 
 logger = logging.getLogger(__name__)
 
